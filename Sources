@@ -1,3 +1,4 @@
+Kia's Sources:
 https://developer.android.com/training/data-storage/room/accessing-data
 
 https://www.geeksforgeeks.org/kotlin-sealed-classes/#
@@ -9,3 +10,22 @@ https://developer.android.com/training/data-storage/room/accessing-data
 https://www.geeksforgeeks.org/android-sqlite-database-in-kotlin/#
 
 https://kotlinlang.org/docs/sealed-classes.html
+
+Joshua's Sources:
+Official Android Developer Documentation:
+https://developer.android.com/docs
+
+Kotlin Programming Language Official Documentation:
+https://kotlinlang.org/docs/home.html
+
+Jetpack Compose Documentation:
+https://developer.android.com/jetpack/compose
+
+Android Developers YouTube Channel:
+https://www.youtube.com/user/androiddevelopers
+
+Navigation Component for Jetpack Compose:
+https://developer.android.com/jetpack/compose/navigation
+
+Jetpack Compose Samples on GitHub:
+https://github.com/android/compose-samples
