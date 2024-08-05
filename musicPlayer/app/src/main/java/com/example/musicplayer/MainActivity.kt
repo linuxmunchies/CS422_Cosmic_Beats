@@ -1,8 +1,6 @@
 package com.example.musicplayer
 
 import android.content.ContentUris
-import android.content.Context
-import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -27,10 +25,8 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import androidx.room.Room
-import com.example.musicplayer.data.dao.SongDao
 import com.example.musicplayer.data.database.SongDatabase
-import com.example.musicplayer.data.database.SongDatabase.Companion.getDatabase
-import com.example.musicplayer.data.entites.Song
+import com.example.musicplayer.data.Entities.Song
 import com.example.musicplayer.ui.theme.MusicPlayerTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

@@ -1,7 +1,7 @@
 package com.example.musicplayer.data.repo
 
 import com.example.musicplayer.data.dao.SongDao
-import com.example.musicplayer.data.entites.Song
+import com.example.musicplayer.data.Entities.Song
 
 class SongRepository(private val songDao: SongDao) {
 

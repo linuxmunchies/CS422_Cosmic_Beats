@@ -4,9 +4,9 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
-import com.example.musicplayer.data.entites.Album
-import com.example.musicplayer.data.entites.Collection
-import com.example.musicplayer.data.entites.Song
+import com.example.musicplayer.data.Entities.Album
+import com.example.musicplayer.data.Entities.Collection
+import com.example.musicplayer.data.Entities.Song
 
 @Dao
 interface CollectionDao {

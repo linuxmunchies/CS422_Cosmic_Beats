@@ -1,9 +1,9 @@
 package com.example.musicplayer.data.repo
 
 import com.example.musicplayer.data.dao.CollectionDao
-import com.example.musicplayer.data.entites.Album
-import com.example.musicplayer.data.entites.Collection
-import com.example.musicplayer.data.entites.Song
+import com.example.musicplayer.data.Entities.Album
+import com.example.musicplayer.data.Entities.Collection
+import com.example.musicplayer.data.Entities.Song
 
 class CollectionRepository(private val collectionDao: CollectionDao) {
 
