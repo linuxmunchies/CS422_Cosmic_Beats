@@ -1,10 +1,15 @@
 package com.example.musicplayer
 
-import android.R.attr.onClick
+import android.content.ContentUris
+import android.content.Context
+import android.media.MediaPlayer
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -15,17 +20,27 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import androidx.room.Room
+import com.example.musicplayer.data.dao.SongDao
+import com.example.musicplayer.data.database.SongDatabase
+import com.example.musicplayer.data.database.SongDatabase.Companion.getDatabase
+import com.example.musicplayer.data.entites.Song
 import com.example.musicplayer.ui.theme.MusicPlayerTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import java.io.File
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         setContent {
             MusicPlayerTheme {
                 Surface(
@@ -39,10 +54,89 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@Composable
+fun LoadSongsIntoDatabase() {
+
+    val context = LocalContext.current
+    val contentResolver = context.contentResolver
+
+    val db = Room.databaseBuilder(
+        context.applicationContext,
+        SongDatabase::class.java,
+        "song_database"
+    ).build()
+
+    val songDao = db.songDao()
+
+    //Set up the database of songs
+    val collection =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Audio.Media.getContentUri(
+                MediaStore.VOLUME_EXTERNAL
+            )
+        } else {
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+        }
+
+    val projection = arrayOf(
+        MediaStore.Audio.Media._ID,
+        MediaStore.Audio.Media.TITLE,
+        MediaStore.Audio.Media.ARTIST,
+        MediaStore.Audio.Media.DURATION
+    )
+
+    // Show only Songs that are at least X in duration as a workaround
+    val selection = "${MediaStore.Audio.Media.DURATION} >= ?"
+    val selectionArgs = arrayOf("1")
+    val sortOrder = "${MediaStore.Audio.Media.TITLE} ASC"
+
+    val query = contentResolver.query(
+        collection,
+        projection,
+        selection,
+        selectionArgs,
+        sortOrder
+    )
+    query?.use { cursor ->
+        // Cache column indices.
+        val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+        val titleColumn =
+            cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
+        val artistColumn =
+            cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
+        val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+
+        while (cursor.moveToNext()) {
+            // Get values of columns for a given song.
+            val id = cursor.getLong(idColumn)
+            val title = cursor.getString(titleColumn)
+            val artist = cursor.getString(durationColumn)
+            val duration = cursor.getFloat(durationColumn)
+
+            val contentUri: Uri = ContentUris.withAppendedId(
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                id
+            )
+            //Add the song to the database
+            runOnIO {
+                songDao.addSong(Song(id, title, artist, duration, contentUri))
+            }
+        }
+    }
+}
+
+fun runOnIO(lambda: suspend () -> Unit){
+    CoroutineScope(Dispatchers.IO).launch {
+        lambda()
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MusicPlayerApp() {
     val navController = rememberNavController()
+
+    LoadSongsIntoDatabase()
 
     Scaffold(
         topBar = {
@@ -180,6 +274,17 @@ fun PlaylistDetailScreen(
 @Composable
 fun BottomPlayerBar() {
     var isPlaying by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    //Play hardcoded song for testing
+    //val currentMusic: MediaPlayer = remember {
+        //MediaPlayer.create(context, R.raw.tgk)
+    //}
+
+//    Get the directory from emulator storage
+    val musicFile = File(
+        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC),
+        "The Gaslamp Killer, Amir Yaghmai - Nissim.mp3"
+    )
 
     BottomAppBar(
         content = {
@@ -191,7 +296,14 @@ fun BottomPlayerBar() {
                     IconButton(onClick = { /* TODO */ }) {
                         Icon(Icons.Filled.SkipPrevious, contentDescription = "Skip to previous")
                     }
-                    IconButton(onClick = { isPlaying = !isPlaying }) {
+                    IconButton(onClick = {
+                        isPlaying = !isPlaying
+                        if (isPlaying) {
+                            //currentMusic.start()
+                        } else {
+                            //currentMusic.pause()
+                        }
+                    }) {
                         Icon(
                             if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                             contentDescription = if (isPlaying) "Pause" else "Play"
@@ -344,18 +456,6 @@ fun SongDetailScreen(songlistId: Int, songTitle: String, artistName: String, mod
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-//            IconButton(onClick = { /* Previous song action */ }) {
-//                Icon(Icons.Filled.SkipPrevious, contentDescription = "Skip to previous")
-//            }
-//            IconButton(onClick = { isPlaying = !isPlaying }) {
-//                Icon(
-//                    if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-//                    contentDescription = if (isPlaying) "Pause" else "Play"
-//                )
-//            }
-//            IconButton(onClick = { /* Next song action */ }) {
-//                Icon(Icons.Filled.SkipNext, contentDescription = "Skip to next")
-//            }
             ElevatedButton(onClick = {  }) {
                 Text("Flat")
             }

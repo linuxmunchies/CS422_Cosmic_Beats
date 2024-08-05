@@ -16,7 +16,7 @@ class SongRepository(private val songDao: SongDao) {
     }
 
     // Get a song by artist
-    suspend fun getSongArtist(title: String): Song? {
+    suspend fun getSongArtist(title: String): List<Song> {
         return songDao.getSongArtist(title)
     }
 

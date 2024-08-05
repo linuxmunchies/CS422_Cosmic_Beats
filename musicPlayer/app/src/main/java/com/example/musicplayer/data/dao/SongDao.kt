@@ -10,25 +10,7 @@ import com.example.musicplayer.data.entites.Song
 @Dao
 interface SongDao {
 
-    @Insert
-    suspend fun addSong(song: Song)
-    //adds a song to our song table
-
-    @Query("SELECT * FROM songTable WHERE title= :title")
-    suspend fun getSong(title: String): Song?
-    //suspension is for not blocking main thread for better user exp
-    //gets song title
-
-    @Query("SELECT * FROM songTable WHERE title= :title")
-    suspend fun getSongArtist(title: String): Song?
-    //suspension is for not blocking main thread for better user exp
-    //gets song artist
-
-    @Query("SELECT * FROM songTable WHERE duration= :duration")
-    suspend fun getSongDuration(duration: Float): Song?
-    //gets song duration
-
-    @Query("SELECT * FROM songTable")
+    @Query("SELECT * FROM song")
     suspend fun getAllSongs(): List<Song>
 
     @Update
@@ -37,4 +19,21 @@ interface SongDao {
     @Delete
     suspend fun deleteSong(song: Song)
 
+    @Insert
+    suspend fun addSong(song: Song)
+    //adds a song to our song table
+
+    @Query("SELECT * FROM song WHERE title= :title")
+    suspend fun getSong(title: String): Song?
+    //suspension is for not blocking main thread for better user exp
+    //gets song title
+
+    @Query("SELECT * FROM song WHERE artist= :artist")
+    suspend fun getSongArtist(artist: String): List<Song>
+    //suspension is for not blocking main thread for better user exp
+    //gets song artist
+
+    @Query("SELECT * FROM song WHERE duration= :duration")
+    suspend fun getSongDuration(duration: Float): Song?
+    //gets song duration
 }

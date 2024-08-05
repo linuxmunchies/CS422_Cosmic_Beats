@@ -1,12 +1,14 @@
 package com.example.musicplayer.data.entites
 
+import android.net.Uri
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "songTable")
+@Entity
 data class Song(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    @PrimaryKey val id: Long = 0,
     val title: String,
     val artist: String,
-    val duration: Float
+    val duration: Float,
+    val uri: Uri
     )

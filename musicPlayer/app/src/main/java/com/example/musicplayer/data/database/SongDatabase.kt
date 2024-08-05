@@ -7,9 +7,8 @@ import androidx.room.RoomDatabase
 import com.example.musicplayer.data.dao.SongDao
 import com.example.musicplayer.data.entites.Song
 
-@Database(entities = [Song::class], version = 1, exportSchema = false)
+@Database(entities = [Song::class], version = 1)
 abstract class SongDatabase : RoomDatabase() {
-
     abstract fun songDao(): SongDao
 
     companion object {
