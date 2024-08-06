@@ -1,4 +1,4 @@
-package com.example.musicplayer.data.Entities
+package com.example.musicplayer.data.entities
 
 import android.net.Uri
 import androidx.room.Entity

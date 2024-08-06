@@ -1,4 +1,4 @@
-package com.example.musicplayer.data.Entities
+package com.example.musicplayer.data.entities
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey

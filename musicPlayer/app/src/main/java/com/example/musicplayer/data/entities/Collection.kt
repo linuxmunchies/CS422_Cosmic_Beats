@@ -1,4 +1,4 @@
-package com.example.musicplayer.data.Entities
+package com.example.musicplayer.data.entities
 
 import android.provider.MediaStore.Audio.Albums
 import androidx.room.Entity

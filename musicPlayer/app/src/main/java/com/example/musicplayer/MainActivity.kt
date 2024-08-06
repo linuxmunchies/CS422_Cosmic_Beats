@@ -26,7 +26,7 @@ import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import androidx.room.Room
 import com.example.musicplayer.data.database.SongDatabase
-import com.example.musicplayer.data.Entities.Song
+import com.example.musicplayer.data.entities.Song
 import com.example.musicplayer.ui.theme.MusicPlayerTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -273,7 +273,7 @@ fun BottomPlayerBar() {
     val context = LocalContext.current
     //Play hardcoded song for testing
     //val currentMusic: MediaPlayer = remember {
-        //MediaPlayer.create(context, R.raw.tgk)
+    //MediaPlayer.create(context, R.raw.tgk)
     //}
 
 //    Get the directory from emulator storage
@@ -477,4 +477,3 @@ fun SongDetailScreen(songlistId: Int, songTitle: String, artistName: String, mod
         }
     }
 }
-
