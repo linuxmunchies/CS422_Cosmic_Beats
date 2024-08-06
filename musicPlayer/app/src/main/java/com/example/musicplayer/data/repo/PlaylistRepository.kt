@@ -12,7 +12,7 @@ class PlaylistRepository(private val playlistDao: PlaylistDao) {
 
     // Get a playlist by title
     suspend fun getPlaylistTitle(title: String): Playlist? {
-        return playlistDao.getlaylistTitle(title)
+        return playlistDao.getPlaylistTitle(title)
     }
 
     // Get all playlists

@@ -26,6 +26,7 @@ import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import androidx.room.Room
 import com.example.musicplayer.data.database.SongDatabase
+import com.example.musicplayer.data.database.SongDatabase.Companion.getDatabase
 import com.example.musicplayer.data.entities.Song
 import com.example.musicplayer.ui.theme.MusicPlayerTheme
 import kotlinx.coroutines.CoroutineScope
@@ -56,23 +57,17 @@ fun LoadSongsIntoDatabase() {
     val context = LocalContext.current
     val contentResolver = context.contentResolver
 
-    val db = Room.databaseBuilder(
-        context.applicationContext,
-        SongDatabase::class.java,
-        "song_database"
-    ).build()
-
+    val db = SongDatabase.getDatabase(context)
     val songDao = db.songDao()
 
+    //Add fake song to database for testing
+    //runOnIO {
+    //    songDao.addSong(Song(6, "bobby", "booby", 21f, "aaa"))
+    //    print("AAAA")
+    //}
+
     //Set up the database of songs
-    val collection =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            MediaStore.Audio.Media.getContentUri(
-                MediaStore.VOLUME_EXTERNAL
-            )
-        } else {
-            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-        }
+    val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
 
     val projection = arrayOf(
         MediaStore.Audio.Media._ID,
@@ -82,8 +77,10 @@ fun LoadSongsIntoDatabase() {
     )
 
     // Show only Songs that are at least X in duration as a workaround
-    val selection = "${MediaStore.Audio.Media.DURATION} >= ?"
-    val selectionArgs = arrayOf("1")
+    //val selection = "${MediaStore.Audio.Media.DURATION} >= ?"
+    //val selectionArgs = arrayOf("1")
+    val selection = null
+    val selectionArgs = null
     val sortOrder = "${MediaStore.Audio.Media.TITLE} ASC"
 
     val query = contentResolver.query(
@@ -93,6 +90,17 @@ fun LoadSongsIntoDatabase() {
         selectionArgs,
         sortOrder
     )
+
+    if (query == null) {
+        println("Query returned null")
+        return
+    }
+
+    if (!query.moveToFirst()) {
+        println("Cursor is empty")
+        return
+    }
+
     query?.use { cursor ->
         // Cache column indices.
         val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
@@ -106,16 +114,16 @@ fun LoadSongsIntoDatabase() {
             // Get values of columns for a given song.
             val id = cursor.getLong(idColumn)
             val title = cursor.getString(titleColumn)
-            val artist = cursor.getString(durationColumn)
+            val artist = cursor.getString(artistColumn)
             val duration = cursor.getFloat(durationColumn)
-
             val contentUri: Uri = ContentUris.withAppendedId(
                 MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
                 id
             )
+            print(id.toString() + title.toString() + artist.toString())
             //Add the song to the database
             runOnIO {
-                songDao.addSong(Song(id, title, artist, duration, contentUri))
+                songDao.addSong(Song(id, title, artist, duration, contentUri.toString()))
             }
         }
     }
@@ -477,3 +485,4 @@ fun SongDetailScreen(songlistId: Int, songTitle: String, artistName: String, mod
         }
     }
 }
+

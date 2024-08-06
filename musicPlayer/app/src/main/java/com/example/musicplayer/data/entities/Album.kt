@@ -8,5 +8,5 @@ data class Album(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val title: String,
     val artist: String,
-    val songList: List<Song>
+    //val songList: List<Song>
 )

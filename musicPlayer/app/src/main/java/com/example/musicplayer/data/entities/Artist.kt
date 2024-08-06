@@ -7,6 +7,6 @@ import androidx.room.PrimaryKey
 data class Artist(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,
-    val collectionList: List<Collection>
+    //val collectionList: List<Collection>
     //collection is a sealed class to use here so an artist can hold single songs and albums
 )

@@ -10,20 +10,20 @@ import com.example.musicplayer.data.entities.Playlist
 interface PlaylistDao {
 
     @Insert
-    suspend fun addPlaylist(playlist: Playlist)
+    fun addPlaylist(playlist: Playlist)
     //adds a playlist to our playlist table
 
     @Query("SELECT * FROM playlistTable WHERE title= :title")
-    suspend fun getlaylistTitle(title: String): Playlist?
+    fun getPlaylistTitle(title: String): Playlist?
     //gets Playlist title
 
     @Query("SELECT * FROM playlistTable")
-    suspend fun getAllPlaylists(): List<Playlist>
+    fun getAllPlaylists(): List<Playlist>
 
     @Update
-    suspend fun updatePlaylist(playlist: Playlist)
+    fun updatePlaylist(playlist: Playlist)
 
     @Delete
-    suspend fun deletePlaylist(playlist: Playlist)
+    fun deletePlaylist(playlist: Playlist)
 
 }

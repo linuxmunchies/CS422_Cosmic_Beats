@@ -12,21 +12,21 @@ import com.example.musicplayer.data.entities.Song
 interface CollectionDao {
 
     @Insert
-    suspend fun addCollection(collection: Collection)
+    fun addCollection(collection: Collection)
 
-    @Query("SELECT * FROM collectionTable WHERE songList= :songList")
-    suspend fun getSongList(songList: List<Song>): Collection?
+    //@Query("SELECT * FROM collectionTable WHERE songList= :songList")
+    //suspend fun getSongList(songList: List<Song>): Collection?
 
-    @Query("SELECT * FROM collectionTable WHERE albumList= albumList")
-    suspend fun getAlbumList(albumList: List<Album>): Collection?
+    //@Query("SELECT * FROM collectionTable WHERE albumList= albumList")
+    //suspend fun getAlbumList(albumList: List<Album>): Collection?
 
     @Query("SELECT * FROM collectionTable")
-    suspend fun getCollection(): List<Collection>
+    fun getCollection(): List<Collection>
 
     @Update
-    suspend fun updateCollection(collection: Collection)
+    fun updateCollection(collection: Collection)
 
     @Delete
-    suspend fun deleteCollection(collection: Collection)
+    fun deleteCollection(collection: Collection)
 
 }

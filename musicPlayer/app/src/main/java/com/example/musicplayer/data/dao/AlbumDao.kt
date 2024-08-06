@@ -10,24 +10,24 @@ import com.example.musicplayer.data.entities.Album
 interface AlbumDao {
 
     @Insert
-    suspend fun addAlbum(album: Album)
+    fun addAlbum(album: Album)
     //adds an album to our album table
 
     @Query("SELECT * FROM albumTable WHERE title= :title")
-    suspend fun getAlbumTitle(title: String): Album?
+    fun getAlbumTitle(title: String): Album?
     //gets album title
 
     @Query("SELECT * FROM albumTable WHERE title= :title")
-    suspend fun getAlbumArtist(title: String): Album?
+    fun getAlbumArtist(title: String): Album?
     //gets album artist
 
     @Query("SELECT * FROM albumTable")
-    suspend fun getAllAlbums(): List<Album>
+    fun getAllAlbums(): List<Album>
 
     @Update
-    suspend fun updateAlbum(album: Album)
+    fun updateAlbum(album: Album)
 
     @Delete
-    suspend fun deleteAlbum(album: Album)
+    fun deleteAlbum(album: Album)
 
 }
