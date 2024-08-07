@@ -36,4 +36,7 @@ interface SongDao {
     @Query("SELECT * FROM song WHERE duration= :duration")
     fun getSongDuration(duration: Float): Song?
     //gets song duration
+
+    @Query("delete from song")
+    fun deleteSongAll()
 }

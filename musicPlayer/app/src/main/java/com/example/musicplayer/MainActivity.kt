@@ -1,42 +1,89 @@
 package com.example.musicplayer
 
 import android.content.ContentUris
+import android.content.Context
+import android.content.pm.PackageManager
+import android.media.MediaScannerConnection
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.BottomAppBar
+import androidx.compose.material3.ElevatedButton
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.navigation.NavType
-import androidx.navigation.compose.*
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import androidx.room.Room
 import com.example.musicplayer.data.database.SongDatabase
-import com.example.musicplayer.data.database.SongDatabase.Companion.getDatabase
 import com.example.musicplayer.data.entities.Song
 import com.example.musicplayer.ui.theme.MusicPlayerTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
+import android.Manifest
+import android.os.Build
+import android.widget.Toast
+
 
 class MainActivity : ComponentActivity() {
+
+    companion object {
+        private const val AUDIO_PERMISSION_CODE = 102
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        checkPermission(Manifest.permission.READ_MEDIA_AUDIO, AUDIO_PERMISSION_CODE)
 
         setContent {
             MusicPlayerTheme {
@@ -45,6 +92,41 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     MusicPlayerApp()
+                }
+            }
+        }
+    }
+
+    private fun checkPermission(permission: String, requestCode: Int) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_DENIED) {
+                // Requesting the permission
+                ActivityCompat.requestPermissions(this, arrayOf(permission), requestCode)
+            } else {
+                Toast.makeText(this, "Permission already granted", Toast.LENGTH_SHORT).show()
+                // Proceed with the operation that requires the permission
+            }
+        } else {
+            // For devices running versions lower than Tiramisu, use READ_EXTERNAL_STORAGE
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_DENIED) {
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE), requestCode)
+            } else {
+                Toast.makeText(this, "Permission already granted", Toast.LENGTH_SHORT).show()
+                // Proceed with the operation that requires the permission
+            }
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        when (requestCode) {
+            AUDIO_PERMISSION_CODE -> {
+                if ((grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)) {
+                    Toast.makeText(this, "Audio Permission Granted", Toast.LENGTH_SHORT).show()
+                    // Permission granted, proceed with the operation that requires the permission
+                } else {
+                    Toast.makeText(this, "Audio Permission Denied", Toast.LENGTH_SHORT).show()
+                    // Permission denied, handle the case
                 }
             }
         }
@@ -60,11 +142,12 @@ fun LoadSongsIntoDatabase() {
     val db = SongDatabase.getDatabase(context)
     val songDao = db.songDao()
 
-    //Add fake song to database for testing
-    //runOnIO {
-    //    songDao.addSong(Song(6, "bobby", "booby", 21f, "aaa"))
-    //    print("AAAA")
-    //}
+    //Delete all songs for testing
+    runOnIO {
+        songDao.deleteSongAll()
+    }
+    //horrible hack for testing to pause to make sure we deleted everything
+    Thread.sleep(1000)
 
     //Set up the database of songs
     val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
@@ -76,9 +159,7 @@ fun LoadSongsIntoDatabase() {
         MediaStore.Audio.Media.DURATION
     )
 
-    // Show only Songs that are at least X in duration as a workaround
-    //val selection = "${MediaStore.Audio.Media.DURATION} >= ?"
-    //val selectionArgs = arrayOf("1")
+    //We're looking for all songs, so don't filter them
     val selection = null
     val selectionArgs = null
     val sortOrder = "${MediaStore.Audio.Media.TITLE} ASC"
@@ -139,7 +220,9 @@ fun runOnIO(lambda: suspend () -> Unit){
 @Composable
 fun MusicPlayerApp() {
     val navController = rememberNavController()
+    val context = LocalContext.current
 
+    MediaScannerConnection.scanFile(context, arrayOf(Environment.getExternalStorageDirectory().toString()), null, null)
     LoadSongsIntoDatabase()
 
     Scaffold(
