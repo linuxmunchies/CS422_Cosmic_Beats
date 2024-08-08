@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.jetbrains.kotlin.android)
+    id("kotlin-kapt") // Add this line to apply the KAPT plugin
 }
 
 android {
@@ -62,9 +63,12 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     implementation("androidx.navigation:navigation-compose:2.7.5")
     implementation("androidx.compose.material:material-icons-extended:1.5.4")
-    implementation ("com.google.accompanist:accompanist-systemuicontroller:0.33.2-alpha")
-//    implementation("com.android.support:appcompat-v7:28.0.0")
-//    implementation ("androidx.media3:media3-exoplayer:1.1.1")
+    implementation("com.google.accompanist:accompanist-systemuicontroller:0.33.2-alpha")
+
+    // Add the Room runtime and kapt dependencies
+    implementation("androidx.room:room-runtime:2.5.0")
+    kapt("androidx.room:room-compiler:2.5.0")
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
