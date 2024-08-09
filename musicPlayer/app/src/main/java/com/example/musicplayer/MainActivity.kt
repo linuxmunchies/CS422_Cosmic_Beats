@@ -73,6 +73,7 @@ import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.audiofx.Equalizer
 import android.os.Build
+import android.provider.MediaStore.Audio.Media
 import android.widget.Toast
 import com.example.musicplayer.data.repo.SongRepository
 import kotlinx.coroutines.runBlocking
@@ -91,7 +92,7 @@ class MainActivity : ComponentActivity() {
 
         checkPermission(Manifest.permission.READ_MEDIA_AUDIO, AUDIO_PERMISSION_CODE)
 
-        mediaPlayer = MediaPlayer.create(this, R.raw.polygonwindow)
+        mediaPlayer = MediaPlayer()
         mediaPlayer.setOnPreparedListener {
             equalizer = Equalizer(0, it.audioSessionId).apply {
                 enabled = true
@@ -135,10 +136,10 @@ class MainActivity : ComponentActivity() {
             AUDIO_PERMISSION_CODE -> {
                 if ((grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)) {
                     Toast.makeText(this, "Audio Permission Granted", Toast.LENGTH_SHORT).show()
-                    // Permission granted, proceed with the operation that requires the permission
+                    // Permission granted
                 } else {
                     Toast.makeText(this, "Audio Permission Denied", Toast.LENGTH_SHORT).show()
-                    // Permission denied, handle the case
+                    // Permission denied, panic
                 }
             }
         }
@@ -242,6 +243,15 @@ fun MusicPlayerApp(mediaPlayer: MediaPlayer, equalizer: Equalizer?) {
     //TODO: Only do this when the MediaStore has changed, otherwise just use the existing one
     LoadSongsIntoDatabase()
 
+    //Once everything is loaded into the database the first time, load it into the app so we don't have
+    //to keep querying it every time, just at app launch
+    val db = SongDatabase.getDatabase(context)
+    val songDao = db.songDao()
+    var songsInDatabase: MutableList<Song> = mutableListOf()
+    runOnIO { songsInDatabase = songDao.getAllSongs().toMutableList() }
+    //horrible waiting hack since we don't have time to properly deal with threads
+    Thread.sleep(1000)
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -259,7 +269,7 @@ fun MusicPlayerApp(mediaPlayer: MediaPlayer, equalizer: Equalizer?) {
                 }
             )
         },
-        bottomBar = { BottomPlayerBar() }
+        bottomBar = { BottomPlayerBar(mediaPlayer, songsInDatabase,0) }
     ) { innerPadding ->
         NavHost(navController, startDestination = "playlists") {
             composable("playlists") {
@@ -277,10 +287,13 @@ fun MusicPlayerApp(mediaPlayer: MediaPlayer, equalizer: Equalizer?) {
                 val playlistId = backStackEntry.arguments?.getInt("playlistId") ?: 0
                 PlaylistDetailScreen(
                     playlistId,
-                    onSongClick = { songTitle, artistName ->
+                    onSongClick = { songTitle, artistName, uri ->
                         navController.navigate("songDetail/$songTitle/$artistName")
+                        playSongFromUri(context, mediaPlayer, uri)
+                        mediaPlayer.start()
                     },
-                    Modifier.padding(innerPadding)
+                    Modifier.padding(innerPadding),
+                    songsInDatabase
                 )
             }
             composable(
@@ -332,27 +345,9 @@ fun PlaylistsScreen(onPlaylistClick: (Int) -> Unit, modifier: Modifier = Modifie
 @Composable
 fun PlaylistDetailScreen(
     playlistId: Int,
-    onSongClick: (String, String) -> Unit,
-    modifier: Modifier = Modifier) {
-    val songs = remember {
-        listOf(
-            "No Scrubs" to "TLC",
-            "Took a Turn" to "Loukeman",
-            "I'm God" to "Clams Casino",
-            "Break It Off" to "PinkPantheress",
-            "Pushin' Keys" to "DJ Swisherman",
-            "Maximum Style" to "Tom And Jerry",
-            "Andreaen Sand Dunes" to "Drexciya",
-            "In 2 Minds" to "Kromestar",
-            "Pull Over" to "Trina",
-            "Massage Situation" to "Flying Lotus",
-            "Ponto Suspeito" to "Lokowat",
-            "Sonic Boom" to "SEGA SOUND TEAM",
-            "Mutate and Survive" to "Oliver Ho",
-            "minipops67" to "Aphex Twin",
-            "BEAT THE POLICE" to "Adolf Nomura"
-        )
-    }
+    onSongClick: (String, String, String) -> Unit,
+    modifier: Modifier = Modifier,
+    data: List<Song>) {
 
     Column(modifier) {
         Text(
@@ -361,12 +356,12 @@ fun PlaylistDetailScreen(
             modifier = Modifier.padding(16.dp)
         )
         LazyColumn {
-            items(songs) { (title, artist) ->
+            items(data) { (id, title, artist, duration, uri) ->
                 ListItem(
                     headlineContent = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     supportingContent = { Text(artist, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     leadingContent = { Icon(Icons.Filled.MusicNote, contentDescription = null) },
-                    modifier = Modifier.clickable { onSongClick(title, artist) }
+                    modifier = Modifier.clickable { onSongClick(title, artist, uri) }
                 )
                 HorizontalDivider()
             }
@@ -374,48 +369,34 @@ fun PlaylistDetailScreen(
     }
 }
 
-//Gets a song in the database by row number and return a MediaPlayer that plays it,
-// alongside the title and artist
-//TODO: Make versions of this that can get songs in other ways
-fun setUpPlayback(context: Context, rowNum: Int): Triple<MediaPlayer, String, String> {
-    //get the song database
-    val db = SongDatabase.getDatabase(context)
-    val songDao = db.songDao()
-
-    //Set up an empty song since song can't be null
-    var testSong = Song(0,"","",0f,"")
-
-    //Get a song
-    runOnIO { testSong = songDao.getAllSongs()[rowNum] }
-    //this is a horrifying hack for testing to pause to make sure we load the song in time
-    //we should be using an adapter for all of this, instead of having to call sleep
-    Thread.sleep(1000)
-
-    //Set the MediaPlayer to the song we just found
-    val currentMusic = MediaPlayer().apply {
+//Set the given MediaPlayer to the given song uri, and get ready to play it
+fun playSongFromUri(context: Context, mediaPlayer: MediaPlayer, uri: String){
+    //Set the given MediaPlayer to the given song
+    mediaPlayer.reset()
+    mediaPlayer.apply {
         setAudioAttributes(
             AudioAttributes.Builder()
                 .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                 .setUsage(AudioAttributes.USAGE_MEDIA)
                 .build()
         )
-        //This is the bit where we turn the song into something we can play
-        setDataSource(context, Uri.parse(testSong.uri))
+        setDataSource(context, Uri.parse(uri))
         prepare()
     }
-    return Triple(currentMusic, testSong.title, testSong.artist)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BottomPlayerBar() {
+fun BottomPlayerBar(mediaPlayer: MediaPlayer,
+                    songList: MutableList<Song>,
+                    posInSongList: Int) {
     var isPlaying by remember { mutableStateOf(false) }
+
     val context = LocalContext.current
-    //Testing variable for skipping songs. Change this to change the starting song!
-    //TODO: Check to make sure this never goes out of bounds in the database
-    var currentRowTest = 10
-    //For testing, get a song by row in the database.
-    var currentMusic = setUpPlayback(context, currentRowTest)
+
+    //I don't know how to get this from when someone clicks on a song in the list, since this bar is a
+    //function and not a class so I can't make a function to get send it to here
+    var currentSong = posInSongList
 
     BottomAppBar(
         content = {
@@ -425,20 +406,19 @@ fun BottomPlayerBar() {
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = {
-                        currentMusic.first.pause()
-                        currentRowTest--
-                        currentMusic = setUpPlayback(context, currentRowTest)
-                        currentMusic.first.start()
+                        currentSong = (currentSong - 1 + songList.size) % songList.size
+                        playSongFromUri(context, mediaPlayer, songList[currentSong].uri)
                         isPlaying = true
+                        mediaPlayer.start()
                     }) {
                         Icon(Icons.Filled.SkipPrevious, contentDescription = "Skip to previous")
                     }
                     IconButton(onClick = {
                         isPlaying = !isPlaying
                         if (isPlaying) {
-                            currentMusic.first.start()
+                            mediaPlayer.start()
                         } else {
-                            currentMusic.first.pause()
+                            mediaPlayer.pause()
                         }
                     }) {
                         Icon(
@@ -447,11 +427,10 @@ fun BottomPlayerBar() {
                         )
                     }
                     IconButton(onClick = {
-                        currentMusic.first.pause()
-                        currentRowTest++
-                        currentMusic = setUpPlayback(context, currentRowTest)
-                        currentMusic.first.start()
+                        currentSong = (currentSong + 1 + songList.size) % songList.size
+                        playSongFromUri(context, mediaPlayer, songList[currentSong].uri)
                         isPlaying = true
+                        mediaPlayer.start()
                     }) {
                         Icon(Icons.Filled.SkipNext, contentDescription = "Skip to next")
                     }
@@ -459,14 +438,16 @@ fun BottomPlayerBar() {
                 Column(modifier = Modifier.padding(start = 16.dp)) {
                     Text(
                         //TODO: make this update
-                        currentMusic.second,
+                        //songList[currentSong].title,
+                        "No track playing",
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         //TODO: make this update
-                        currentMusic.third,
+                        //songList[currentSong].artist,
+                        "",
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -512,10 +493,12 @@ fun SongDetailScreen(mediaPlayer: MediaPlayer,equalizer: Equalizer?, songTitle: 
                 onValueChange = { it ->
                     sliderPosition = it
                     equalizer.setBandLevel(0, ((sliderPosition * 60-30)*100f).toInt().toShort())
+                    mediaPlayer.pause()
                     mediaPlayer.attachAuxEffect(equalizer.id)
+                    mediaPlayer.start()
                     mediaPlayer.setAuxEffectSendLevel(sliderPosition)
 //                    equalizer.setParameterListener(mediaPlayer as Equalizer.OnParameterChangeListener?)
-                                },
+                },
                 valueRange = 0f..1f,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -536,7 +519,9 @@ fun SongDetailScreen(mediaPlayer: MediaPlayer,equalizer: Equalizer?, songTitle: 
                 onValueChange = { it ->
                     sliderPosition1 = it
                     equalizer.setBandLevel(1, ((sliderPosition1 * 60 - 30) * 100).toInt().toShort())
+                    mediaPlayer.pause()
                     mediaPlayer.attachAuxEffect(equalizer.id)
+                    mediaPlayer.start()
                     mediaPlayer.setAuxEffectSendLevel(sliderPosition1)},
                 valueRange = 0f..1f,
                 modifier = Modifier
@@ -558,7 +543,9 @@ fun SongDetailScreen(mediaPlayer: MediaPlayer,equalizer: Equalizer?, songTitle: 
                 onValueChange = { it->
                     sliderPosition2 = it
                     equalizer.setBandLevel(2, ((sliderPosition2 * 60 - 30) * 100).toInt().toShort())
+                    mediaPlayer.pause()
                     mediaPlayer.attachAuxEffect(equalizer.id)
+                    mediaPlayer.start()
                     mediaPlayer.setAuxEffectSendLevel(sliderPosition2)},
                 valueRange = 0f..1f,
                 modifier = Modifier
@@ -580,7 +567,9 @@ fun SongDetailScreen(mediaPlayer: MediaPlayer,equalizer: Equalizer?, songTitle: 
                 onValueChange = { it ->
                     sliderPosition3 = it
                     equalizer.let{it.setBandLevel(3, ((sliderPosition3 * 60 - 30) * 100).toInt().toShort())
+                        mediaPlayer.pause()
                         mediaPlayer.attachAuxEffect(equalizer.id)
+                        mediaPlayer.start()
                         mediaPlayer.setAuxEffectSendLevel(sliderPosition3)}},
                 valueRange = 0f..1f,
                 modifier = Modifier
@@ -602,8 +591,10 @@ fun SongDetailScreen(mediaPlayer: MediaPlayer,equalizer: Equalizer?, songTitle: 
                 onValueChange = { it ->
                     sliderPosition4 = it
                     equalizer.let{it.setBandLevel(4, ((sliderPosition4 * 60 - 30) * 100).toInt().toShort())
-                    mediaPlayer.attachAuxEffect(equalizer.id)
-                    mediaPlayer.setAuxEffectSendLevel(sliderPosition4)}},
+                        mediaPlayer.pause()
+                        mediaPlayer.attachAuxEffect(equalizer.id)
+                        mediaPlayer.start()
+                        mediaPlayer.setAuxEffectSendLevel(sliderPosition4)}},
                 valueRange = 0f..1f,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -630,10 +621,10 @@ fun SongDetailScreen(mediaPlayer: MediaPlayer,equalizer: Equalizer?, songTitle: 
         ) {
             ElevatedButton(onClick = {
                 equalizer.let {
-                val numberOfBands = it.numberOfBands
-                for (i in 0 until numberOfBands) {
-                    it.setBandLevel(i.toShort(), 0)
-                }}
+                    val numberOfBands = it.numberOfBands
+                    for (i in 0 until numberOfBands) {
+                        it.setBandLevel(i.toShort(), 0)
+                    }}
             }) {
                 Text("Flat")
             }
@@ -646,7 +637,7 @@ fun SongDetailScreen(mediaPlayer: MediaPlayer,equalizer: Equalizer?, songTitle: 
                     it.setBandLevel(0, lowBassBoost)
                     it.setBandLevel(1, midBassBoost)
                     it.setBandLevel(2, upperBassBoost)
-            }}) {
+                }}) {
                 Text("Bass Boot")
             }
             Spacer(modifier = Modifier.width(8.dp))
