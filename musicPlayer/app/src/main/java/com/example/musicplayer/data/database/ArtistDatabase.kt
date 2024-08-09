@@ -5,7 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.example.musicplayer.data.dao.ArtistDao
-import com.example.musicplayer.data.entites.Artist
+import com.example.musicplayer.data.entities.Artist
 
 @Database(entities = [Artist::class], version = 1, exportSchema = false)
 abstract class ArtistDatabase : RoomDatabase() {

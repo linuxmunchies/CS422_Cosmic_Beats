@@ -1,7 +1,7 @@
 package com.example.musicplayer.data.repo
 
 import com.example.musicplayer.data.dao.PlaylistDao
-import com.example.musicplayer.data.entites.Playlist
+import com.example.musicplayer.data.entities.Playlist
 
 class PlaylistRepository(private val playlistDao: PlaylistDao) {
 
@@ -12,7 +12,7 @@ class PlaylistRepository(private val playlistDao: PlaylistDao) {
 
     // Get a playlist by title
     suspend fun getPlaylistTitle(title: String): Playlist? {
-        return playlistDao.getlaylistTitle(title)
+        return playlistDao.getPlaylistTitle(title)
     }
 
     // Get all playlists

@@ -1,7 +1,7 @@
 package com.example.musicplayer.data.repo
 
 import com.example.musicplayer.data.dao.SongDao
-import com.example.musicplayer.data.entites.Song
+import com.example.musicplayer.data.entities.Song
 
 class SongRepository(private val songDao: SongDao) {
 
@@ -16,7 +16,7 @@ class SongRepository(private val songDao: SongDao) {
     }
 
     // Get a song by artist
-    suspend fun getSongArtist(title: String): Song? {
+    suspend fun getSongArtist(title: String): List<Song> {
         return songDao.getSongArtist(title)
     }
 

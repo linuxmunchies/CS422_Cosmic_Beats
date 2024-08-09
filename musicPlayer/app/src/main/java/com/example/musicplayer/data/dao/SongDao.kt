@@ -5,36 +5,38 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
-import com.example.musicplayer.data.entites.Song
+import com.example.musicplayer.data.entities.Song
 
 @Dao
 interface SongDao {
 
+    @Query("SELECT * FROM song")
+    fun getAllSongs(): List<Song>
+
+    @Update
+    fun updateSong(song: Song)
+
+    @Delete
+    fun deleteSong(song: Song)
+
     @Insert
-    suspend fun addSong(song: Song)
+    fun addSong(song: Song)
     //adds a song to our song table
 
-    @Query("SELECT * FROM songTable WHERE title= :title")
-    suspend fun getSong(title: String): Song?
+    @Query("SELECT * FROM song WHERE title= :title")
+    fun getSong(title: String): Song?
     //suspension is for not blocking main thread for better user exp
     //gets song title
 
-    @Query("SELECT * FROM songTable WHERE title= :title")
-    suspend fun getSongArtist(title: String): Song?
+    @Query("SELECT * FROM song WHERE artist= :artist")
+    fun getSongArtist(artist: String): List<Song>
     //suspension is for not blocking main thread for better user exp
     //gets song artist
 
-    @Query("SELECT * FROM songTable WHERE duration= :duration")
-    suspend fun getSongDuration(duration: Float): Song?
+    @Query("SELECT * FROM song WHERE duration= :duration")
+    fun getSongDuration(duration: Float): Song?
     //gets song duration
 
-    @Query("SELECT * FROM songTable")
-    suspend fun getAllSongs(): List<Song>
-
-    @Update
-    suspend fun updateSong(song: Song)
-
-    @Delete
-    suspend fun deleteSong(song: Song)
-
+    @Query("delete from song")
+    fun deleteSongAll()
 }

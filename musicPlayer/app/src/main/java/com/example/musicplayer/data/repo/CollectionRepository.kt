@@ -1,9 +1,9 @@
 package com.example.musicplayer.data.repo
 
 import com.example.musicplayer.data.dao.CollectionDao
-import com.example.musicplayer.data.entites.Album
-import com.example.musicplayer.data.entites.Collection
-import com.example.musicplayer.data.entites.Song
+import com.example.musicplayer.data.entities.Album
+import com.example.musicplayer.data.entities.Collection
+import com.example.musicplayer.data.entities.Song
 
 class CollectionRepository(private val collectionDao: CollectionDao) {
 
@@ -13,14 +13,14 @@ class CollectionRepository(private val collectionDao: CollectionDao) {
     }
 
     // Get a collection by song list
-    suspend fun getSongList(songList: List<Song>): Collection? {
-        return collectionDao.getSongList(songList)
-    }
+    //suspend fun getSongList(songList: List<Song>): Collection? {
+    //    return collectionDao.getSongList(songList)
+    //}
 
     // Get a collection by album list
-    suspend fun getAlbumList(albumList: List<Album>): Collection? {
-        return collectionDao.getAlbumList(albumList)
-    }
+    //suspend fun getAlbumList(albumList: List<Album>): Collection? {
+    //    return collectionDao.getAlbumList(albumList)
+    //}
 
     // Get all collections
     suspend fun getAllCollections(): List<Collection> {

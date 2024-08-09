@@ -24,7 +24,6 @@ Cosmic Beats is an Android music player application built with Kotlin and Jetpac
 - Material Design 3
 
 ## Getting Started
-Clone the repo, import into Android Studio, and start up either your emulator or connect a phone using Wireless Debugging or Wired Debugging.
 
 ### Prerequisites
 
@@ -50,5 +49,5 @@ Clone the repo, import into Android Studio, and start up either your emulator or
   - `MainActivity.kt`: Entry point of the application
 
 ## Acknowledgments
-Thanks to UAB for providing us with these educational resources to make this project a reality!
+
 - Thanks to the Android development community for their invaluable resources and support.
