@@ -1,12 +1,19 @@
 package com.example.musicplayer
 
+import android.Manifest
 import android.content.ContentUris
+import android.content.Context
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import android.media.MediaScannerConnection
+import android.media.AudioAttributes
+import android.media.MediaPlayer
+import android.media.audiofx.Equalizer
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
-import android.os.Environment
 import android.provider.MediaStore
+import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
@@ -66,16 +73,6 @@ import com.example.musicplayer.ui.theme.MusicPlayerTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import android.Manifest
-import android.app.PendingIntent.getActivity
-import android.content.Context
-import android.media.AudioAttributes
-import android.media.MediaPlayer
-import android.media.audiofx.Equalizer
-import android.os.Build
-import android.provider.MediaStore.Audio.Media
-import android.widget.Toast
-import com.example.musicplayer.data.repo.SongRepository
 import kotlinx.coroutines.runBlocking
 
 
@@ -92,19 +89,17 @@ class MainActivity : ComponentActivity() {
 
         checkPermission(Manifest.permission.READ_MEDIA_AUDIO, AUDIO_PERMISSION_CODE)
 
+        val prefs = getSharedPreferences("com.musicPlayer.app", MODE_PRIVATE)
+
         mediaPlayer = MediaPlayer()
-        mediaPlayer.setOnPreparedListener {
-            equalizer = Equalizer(0, it.audioSessionId).apply {
-                enabled = true
-            }
-        }
+
         setContent {
             MusicPlayerTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    MusicPlayerApp(mediaPlayer,equalizer)
+                    MusicPlayerApp(mediaPlayer,equalizer, prefs)
                 }
             }
         }
@@ -147,7 +142,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun LoadSongsIntoDatabase() {
+fun loadSongsIntoDatabase(): MutableList<Song> {
 
     val context = LocalContext.current
     val contentResolver = context.contentResolver
@@ -155,12 +150,15 @@ fun LoadSongsIntoDatabase() {
     val db = SongDatabase.getDatabase(context)
     val songDao = db.songDao()
 
-    //Delete all songs for testing
+    //Delete all songs
     runOnIO {
         songDao.deleteSongAll()
     }
     //horrible hack for testing to pause to make sure we deleted everything
-    Thread.sleep(1000)
+    Thread.sleep(2000)
+
+    //Get the list ready to return once it is filled
+    var songList: MutableList<Song> = mutableListOf()
 
     //Set up the database of songs
     val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
@@ -184,16 +182,6 @@ fun LoadSongsIntoDatabase() {
         selectionArgs,
         sortOrder
     )
-
-    if (query == null) {
-        println("Query returned null")
-        return
-    }
-
-    if (!query.moveToFirst()) {
-        println("Cursor is empty")
-        return
-    }
 
     query?.use { cursor ->
         // Cache column indices.
@@ -219,8 +207,10 @@ fun LoadSongsIntoDatabase() {
             runOnIO {
                 songDao.addSong(Song(id, title, artist, duration, contentUri.toString()))
             }
+            songList.add(Song(id, title, artist, duration, contentUri.toString()))
         }
     }
+    return songList
 }
 
 fun runOnIO(lambda: suspend () -> Unit){
@@ -233,24 +223,38 @@ fun runOnIO(lambda: suspend () -> Unit){
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MusicPlayerApp(mediaPlayer: MediaPlayer, equalizer: Equalizer?) {
+fun MusicPlayerApp(mediaPlayer: MediaPlayer, equalizer: Equalizer?, prefs: SharedPreferences) {
     val navController = rememberNavController()
     val context = LocalContext.current
 
-    //scan for changes
-    MediaScannerConnection.scanFile(context, arrayOf(Environment.getExternalStorageDirectory().toString()), null, null)
-    //Load songs into our database
-    //TODO: Only do this when the MediaStore has changed, otherwise just use the existing one
-    LoadSongsIntoDatabase()
-
-    //Once everything is loaded into the database the first time, load it into the app so we don't have
-    //to keep querying it every time, just at app launch
-    val db = SongDatabase.getDatabase(context)
-    val songDao = db.songDao()
     var songsInDatabase: MutableList<Song> = mutableListOf()
-    runOnIO { songsInDatabase = songDao.getAllSongs().toMutableList() }
-    //horrible waiting hack since we don't have time to properly deal with threads
-    Thread.sleep(1000)
+    val savedVersion = prefs.getLong("savedVersion", 0)
+
+    //Load songs into our database, checking if any new songs have been added
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        //If our version of Android supports it, check if there's been updates to the MediaStore
+        val mediaVersion = MediaStore.getGeneration(context,MediaStore.getExternalVolumeNames(context).elementAt(0).toString())
+        if (mediaVersion == savedVersion){
+            //mediaState is up to date, just get the list of songs
+            songsInDatabase = getSongsFromDatabase()
+        } else {
+            //Our database is out of date, rebuild it!
+            songsInDatabase = loadSongsIntoDatabase()
+            //horrible waiting hack since we don't have time to properly deal with threads
+            Thread.sleep(2000)
+            prefs.edit().putLong("savedVersion", mediaVersion).apply()
+        }
+    } else {
+        //We can't check if we are out of date in this case, so always rebuild
+        songsInDatabase = loadSongsIntoDatabase()
+        //horrible waiting hack since we don't have time to properly deal with threads
+        Thread.sleep(2000)
+    }
+
+    //state for current song
+    var currentSongIndex by remember { mutableStateOf(0) }
+
+    val equalizer = Equalizer(1, mediaPlayer.audioSessionId)
 
     Scaffold(
         topBar = {
@@ -269,12 +273,33 @@ fun MusicPlayerApp(mediaPlayer: MediaPlayer, equalizer: Equalizer?) {
                 }
             )
         },
-        bottomBar = { BottomPlayerBar(mediaPlayer, songsInDatabase,0) }
+        bottomBar = {
+            BottomPlayerBar(
+                mediaPlayer,
+                songsInDatabase,
+                currentSongIndex,
+                onSongChange = { newSongIndex ->
+                    currentSongIndex = newSongIndex
+                    val newSong = songsInDatabase[newSongIndex]
+                    playSongFromUri(context, mediaPlayer, newSong.uri)
+                    mediaPlayer.start()
+                })
+
+        }
     ) { innerPadding ->
         NavHost(navController, startDestination = "playlists") {
             composable("playlists") {
                 PlaylistsScreen(
                     onPlaylistClick = { playlistId ->
+                        when (playlistId) {
+                            0 -> songsInDatabase.sortBy { it.title }
+                            1 -> songsInDatabase.sortBy { it.artist }
+                            2 -> songsInDatabase.sortByDescending { it.duration }
+                            3 -> songsInDatabase.sortBy { it.duration }
+                            4 -> songsInDatabase.sortBy { it.id }
+                            else -> { // panic, we are out of range
+                            }
+                        }
                         navController.navigate("playlist/$playlistId")
                     },
                     modifier = Modifier.padding(innerPadding)
@@ -288,9 +313,16 @@ fun MusicPlayerApp(mediaPlayer: MediaPlayer, equalizer: Equalizer?) {
                 PlaylistDetailScreen(
                     playlistId,
                     onSongClick = { songTitle, artistName, uri ->
-                        navController.navigate("songDetail/$songTitle/$artistName")
                         playSongFromUri(context, mediaPlayer, uri)
+                        equalizer.apply {
+                            setEnabled(true)
+                        }
                         mediaPlayer.start()
+                        navController.navigate("songDetail/$songTitle/$artistName")
+                        val songIndex = songsInDatabase.indexOfFirst { it.title == songTitle && it.artist == artistName }
+                        if (songIndex >= 0) {
+                            currentSongIndex = songIndex
+                        }
                     },
                     Modifier.padding(innerPadding),
                     songsInDatabase
@@ -303,7 +335,6 @@ fun MusicPlayerApp(mediaPlayer: MediaPlayer, equalizer: Equalizer?) {
                     navArgument("artistName") { type = NavType.StringType }
                 )
             ) { backStackEntry ->
-                val songlistId = backStackEntry.arguments?.getInt("songlistId") ?: 0
                 val songTitle = backStackEntry.arguments?.getString("songTitle") ?: ""
                 val artistName = backStackEntry.arguments?.getString("artistName") ?: ""
                 SongDetailScreen(
@@ -316,24 +347,39 @@ fun MusicPlayerApp(mediaPlayer: MediaPlayer, equalizer: Equalizer?) {
     }
 }
 
+//For getting songs without adding them to the database
+@Composable
+fun getSongsFromDatabase(): MutableList<Song> {
+    val context = LocalContext.current
+
+    val db = SongDatabase.getDatabase(context)
+    val songDao = db.songDao()
+    var songList: MutableList<Song> = mutableListOf()
+
+    runOnIO {
+        songList = songDao.getAllSongs().toMutableList()
+    }
+    Thread.sleep(1000)
+    return songList
+}
 
 @Composable
 fun PlaylistsScreen(onPlaylistClick: (Int) -> Unit, modifier: Modifier = Modifier) {
     val playlists = remember {
         listOf(
-            "Favorites" to 15,
-            "Rock Classics" to 20,
-            "Chill Vibes" to 18,
-            "Workout Mix" to 25,
-            "Road Trip" to 30
+            "Alphabetical (Title)",
+            "Alphabetical (Artist)",
+            "Duration (Longest)",
+            "Duration (Shortest)",
+            "Song ID"
         )
     }
 
     LazyColumn(modifier) {
         items(playlists.withIndex().toList()) { (index, playlist) ->
             ListItem(
-                headlineContent = { Text(playlist.first, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                supportingContent = { Text("${playlist.second} songs", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                headlineContent = { Text(playlist, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                //supportingContent = { Text("${playlist.second} songs", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 leadingContent = { Icon(Icons.Filled.PlaylistPlay, contentDescription = null) },
                 modifier = Modifier.clickable { onPlaylistClick(index) }
             )
@@ -351,7 +397,17 @@ fun PlaylistDetailScreen(
 
     Column(modifier) {
         Text(
-            "Playlist ${playlistId + 1}",
+            //"Playlist ${playlistId + 1}"
+            when (playlistId) {
+                0 -> "Alphabetical (Title)"
+                1 -> "Alphabetical (Artist)"
+                2 -> "Duration (Longest)"
+                3 -> "Duration (Shortest)"
+                4 -> "Song ID"
+                else -> { // panic, we are out of range
+                    "Unknown"
+                }
+            },
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.padding(16.dp)
         )
@@ -359,7 +415,13 @@ fun PlaylistDetailScreen(
             items(data) { (id, title, artist, duration, uri) ->
                 ListItem(
                     headlineContent = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    supportingContent = { Text(artist, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    supportingContent = {
+                        Row {
+                            Text(artist, maxLines = 1, overflow = TextOverflow.Ellipsis);
+                            Spacer(Modifier.weight(1f));
+                            Text(formatDuration(duration), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    },
                     leadingContent = { Icon(Icons.Filled.MusicNote, contentDescription = null) },
                     modifier = Modifier.clickable { onSongClick(title, artist, uri) }
                 )
@@ -367,6 +429,13 @@ fun PlaylistDetailScreen(
             }
         }
     }
+}
+
+fun formatDuration(duration: Float) :String {
+    val totalSeconds = (duration / 1000).toInt()
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return String.format("%01d:%02d", minutes, seconds)
 }
 
 //Set the given MediaPlayer to the given song uri, and get ready to play it
@@ -389,14 +458,18 @@ fun playSongFromUri(context: Context, mediaPlayer: MediaPlayer, uri: String){
 @Composable
 fun BottomPlayerBar(mediaPlayer: MediaPlayer,
                     songList: MutableList<Song>,
-                    posInSongList: Int) {
-    var isPlaying by remember { mutableStateOf(false) }
+                    currentSongIndex: Int,
+                    onSongChange: (Int) -> Unit){
 
+    var isPlaying by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
-    //I don't know how to get this from when someone clicks on a song in the list, since this bar is a
-    //function and not a class so I can't make a function to get send it to here
-    var currentSong = posInSongList
+    //There's a crash on first time startup since there's no songs in the list to grab a title from.
+    //We stop that here!
+    var noSongs = true
+    if (songList.size != 0) {
+        noSongs = false
+    }
 
     BottomAppBar(
         content = {
@@ -406,19 +479,24 @@ fun BottomPlayerBar(mediaPlayer: MediaPlayer,
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = {
-                        currentSong = (currentSong - 1 + songList.size) % songList.size
-                        playSongFromUri(context, mediaPlayer, songList[currentSong].uri)
-                        isPlaying = true
-                        mediaPlayer.start()
+                        if (!noSongs) {
+                            val newSongIndex =
+                                (currentSongIndex - 1 + songList.size) % songList.size
+                            onSongChange(newSongIndex)
+                            isPlaying = true
+                        }
                     }) {
                         Icon(Icons.Filled.SkipPrevious, contentDescription = "Skip to previous")
                     }
                     IconButton(onClick = {
-                        isPlaying = !isPlaying
-                        if (isPlaying) {
-                            mediaPlayer.start()
-                        } else {
-                            mediaPlayer.pause()
+                        //Check to make sure we are playing something to avoid crashing
+                        if (!noSongs) {
+                            isPlaying = !isPlaying
+                            if (isPlaying) {
+                                mediaPlayer.start()
+                            } else {
+                                mediaPlayer.pause()
+                            }
                         }
                     }) {
                         Icon(
@@ -427,32 +505,40 @@ fun BottomPlayerBar(mediaPlayer: MediaPlayer,
                         )
                     }
                     IconButton(onClick = {
-                        currentSong = (currentSong + 1 + songList.size) % songList.size
-                        playSongFromUri(context, mediaPlayer, songList[currentSong].uri)
-                        isPlaying = true
-                        mediaPlayer.start()
+                        if (!noSongs) {
+                            val newSongIndex = (currentSongIndex + 1) % songList.size
+                            onSongChange(newSongIndex)
+                            isPlaying = true
+                        }
                     }) {
                         Icon(Icons.Filled.SkipNext, contentDescription = "Skip to next")
                     }
                 }
-                Column(modifier = Modifier.padding(start = 16.dp)) {
+                Column(modifier = Modifier
+                    .padding(start = 16.dp)
+                    .weight(1f)) {
                     Text(
-                        //TODO: make this update
-                        //songList[currentSong].title,
-                        "No track playing",
+                        if (noSongs) {
+                            "No track playing"
+                        } else {
+                            songList[currentSongIndex].title
+                        },
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        //TODO: make this update
-                        //songList[currentSong].artist,
-                        "",
+                        if (noSongs) {
+                            "No track playing"
+                        } else {
+                            songList[currentSongIndex].artist
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+                Spacer(modifier = Modifier.width(16.dp))
             }
         }
     )
@@ -460,17 +546,32 @@ fun BottomPlayerBar(mediaPlayer: MediaPlayer,
 
 
 @Composable
-fun SongDetailScreen(mediaPlayer: MediaPlayer,equalizer: Equalizer?, songTitle: String, artistName: String, modifier: Modifier = Modifier) {
-    val equalizer = remember { Equalizer(0, mediaPlayer.audioSessionId).apply { enabled = true } }
+fun SongDetailScreen(mediaPlayer: MediaPlayer,equalizer: Equalizer, songTitle: String, artistName: String, modifier: Modifier = Modifier) {
+
     val context = LocalContext.current
 
     var isPlaying by remember { mutableStateOf(false) }
-    var sliderPosition by remember { mutableStateOf(0f) }
-    var sliderPosition1 by remember { mutableStateOf(0f) }
-    var sliderPosition2 by remember { mutableStateOf(0f) }
-    var sliderPosition3 by remember { mutableStateOf(0f) }
-    var sliderPosition4 by remember { mutableStateOf(0f) }
+    var sliderPosition by remember { mutableStateOf(0.5f) }
+    var sliderPosition1 by remember { mutableStateOf(0.5f) }
+    var sliderPosition2 by remember { mutableStateOf(0.5f) }
+    var sliderPosition3 by remember { mutableStateOf(0.5f) }
+    var sliderPosition4 by remember { mutableStateOf(0.5f) }
 
+    fun updateEqualizerBand(band: Short, level: Float) {
+        equalizer.let {
+            val numberOfBands = it.numberOfBands
+            if (band in 0 until numberOfBands) {
+                val minLevel = it.bandLevelRange[0]
+                val maxLevel = it.bandLevelRange[1]
+                val newLevel = (minLevel + ((maxLevel - minLevel) * level)).toInt().toShort()
+                try {
+                    it.setBandLevel(band, newLevel)
+                } catch (e: UnsupportedOperationException) {
+                    Log.e("Equalizer", "Unsupported operation for band $band: ${e.message}")
+                }
+            }
+        }
+    }
 
     Column(modifier.padding(16.dp)) {
         Text(
@@ -490,14 +591,9 @@ fun SongDetailScreen(mediaPlayer: MediaPlayer,equalizer: Equalizer?, songTitle: 
         ) {
             Slider(
                 value = sliderPosition,
-                onValueChange = { it ->
+                onValueChange = {
                     sliderPosition = it
-                    equalizer.setBandLevel(0, ((sliderPosition * 60-30)*100f).toInt().toShort())
-                    mediaPlayer.pause()
-                    mediaPlayer.attachAuxEffect(equalizer.id)
-                    mediaPlayer.start()
-                    mediaPlayer.setAuxEffectSendLevel(sliderPosition)
-//                    equalizer.setParameterListener(mediaPlayer as Equalizer.OnParameterChangeListener?)
+                    updateEqualizerBand(0, it)
                 },
                 valueRange = 0f..1f,
                 modifier = Modifier
@@ -516,13 +612,10 @@ fun SongDetailScreen(mediaPlayer: MediaPlayer,equalizer: Equalizer?, songTitle: 
         ) {
             Slider(
                 value = sliderPosition1,
-                onValueChange = { it ->
+                onValueChange = {
                     sliderPosition1 = it
-                    equalizer.setBandLevel(1, ((sliderPosition1 * 60 - 30) * 100).toInt().toShort())
-                    mediaPlayer.pause()
-                    mediaPlayer.attachAuxEffect(equalizer.id)
-                    mediaPlayer.start()
-                    mediaPlayer.setAuxEffectSendLevel(sliderPosition1)},
+                    updateEqualizerBand(1, it)
+                },
                 valueRange = 0f..1f,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -540,13 +633,10 @@ fun SongDetailScreen(mediaPlayer: MediaPlayer,equalizer: Equalizer?, songTitle: 
         ) {
             Slider(
                 value = sliderPosition2,
-                onValueChange = { it->
+                onValueChange = {
                     sliderPosition2 = it
-                    equalizer.setBandLevel(2, ((sliderPosition2 * 60 - 30) * 100).toInt().toShort())
-                    mediaPlayer.pause()
-                    mediaPlayer.attachAuxEffect(equalizer.id)
-                    mediaPlayer.start()
-                    mediaPlayer.setAuxEffectSendLevel(sliderPosition2)},
+                    updateEqualizerBand(2, it)
+                },
                 valueRange = 0f..1f,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -564,13 +654,10 @@ fun SongDetailScreen(mediaPlayer: MediaPlayer,equalizer: Equalizer?, songTitle: 
         ) {
             Slider(
                 value = sliderPosition3,
-                onValueChange = { it ->
+                onValueChange = {
                     sliderPosition3 = it
-                    equalizer.let{it.setBandLevel(3, ((sliderPosition3 * 60 - 30) * 100).toInt().toShort())
-                        mediaPlayer.pause()
-                        mediaPlayer.attachAuxEffect(equalizer.id)
-                        mediaPlayer.start()
-                        mediaPlayer.setAuxEffectSendLevel(sliderPosition3)}},
+                    updateEqualizerBand(3, it)
+                },
                 valueRange = 0f..1f,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -588,13 +675,10 @@ fun SongDetailScreen(mediaPlayer: MediaPlayer,equalizer: Equalizer?, songTitle: 
         ) {
             Slider(
                 value = sliderPosition4,
-                onValueChange = { it ->
+                onValueChange = {
                     sliderPosition4 = it
-                    equalizer.let{it.setBandLevel(4, ((sliderPosition4 * 60 - 30) * 100).toInt().toShort())
-                        mediaPlayer.pause()
-                        mediaPlayer.attachAuxEffect(equalizer.id)
-                        mediaPlayer.start()
-                        mediaPlayer.setAuxEffectSendLevel(sliderPosition4)}},
+                    updateEqualizerBand(4, it)
+                },
                 valueRange = 0f..1f,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -620,49 +704,61 @@ fun SongDetailScreen(mediaPlayer: MediaPlayer,equalizer: Equalizer?, songTitle: 
             verticalAlignment = Alignment.CenterVertically
         ) {
             ElevatedButton(onClick = {
-                equalizer.let {
-                    val numberOfBands = it.numberOfBands
-                    for (i in 0 until numberOfBands) {
-                        it.setBandLevel(i.toShort(), 0)
-                    }}
+                updateEqualizerBand(0, 0.5f)
+                updateEqualizerBand(1, 0.5f)
+                updateEqualizerBand(2, 0.5f)
+                updateEqualizerBand(3, 0.5f)
+                updateEqualizerBand(4, 0.5f)
+                sliderPosition = 0.5f
+                sliderPosition1 = 0.5f
+                sliderPosition2 = 0.5f
+                sliderPosition3 = 0.5f
+                sliderPosition4 = 0.5f
             }) {
                 Text("Flat")
             }
             Spacer(modifier = Modifier.width(8.dp))
             ElevatedButton(onClick = {
-                equalizer.let {
-                    val lowBassBoost = ((60 - 15) * 100).toInt().toShort()
-                    val midBassBoost = ((80 - 30) * 100).toInt().toShort()
-                    val upperBassBoost = ((20 - 10) * 100).toInt().toShort()
-                    it.setBandLevel(0, lowBassBoost)
-                    it.setBandLevel(1, midBassBoost)
-                    it.setBandLevel(2, upperBassBoost)
-                }}) {
-                Text("Bass Boot")
+                updateEqualizerBand(0, 1f)
+                updateEqualizerBand(1, 1f)
+                updateEqualizerBand(2, 1f)
+                updateEqualizerBand(3, 1f)
+                updateEqualizerBand(4, 1f)
+                sliderPosition = 1f
+                sliderPosition1 = 1f
+                sliderPosition2 = 1f
+                sliderPosition3 = 1f
+                sliderPosition4 = 1f
+            }) {
+                Text("Bass Boost")
             }
             Spacer(modifier = Modifier.width(8.dp))
             ElevatedButton(onClick = {
-                equalizer.let {
-                    val midTrebleBoost = ((15 - 0) * 100).toInt().toShort()
-                    val highTrebleBoost = ((30 - 0) * 100).toInt().toShort()
-                    it.setBandLevel(3, midTrebleBoost)
-                    it.setBandLevel(4, highTrebleBoost)
-                }
+                updateEqualizerBand(0, 0f)
+                updateEqualizerBand(1, 0.3f)
+                updateEqualizerBand(2, 0.5f)
+                updateEqualizerBand(3, 0.7f)
+                updateEqualizerBand(4, 1f)
+                sliderPosition = 0f
+                sliderPosition1 = 0.3f
+                sliderPosition2 = 0.5f
+                sliderPosition3 = 0.7f
+                sliderPosition4 = 1f
             }) {
                 Text("Treble Boost")
             }
         }
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ){
-            ElevatedButton(onClick = {  }) {
-                Text("Save")
-            }
-        }
+//        Spacer(modifier = Modifier.height(16.dp))
+//
+//        Row(
+//            modifier = Modifier.fillMaxWidth(),
+//            horizontalArrangement = Arrangement.Center,
+//            verticalAlignment = Alignment.CenterVertically
+//        ){
+//            ElevatedButton(onClick = {  }) {
+//                Text("Save")
+//            }
+//        }
     }
 }
 
